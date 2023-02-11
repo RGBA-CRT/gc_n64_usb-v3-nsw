@@ -21,7 +21,7 @@ struct usbpad {
 	unsigned char hid_report_data[8]; // Used for force feedback
 };
 
-void usbpad_init(struct usbpad *pad);
+void usbpad_init(struct usbpad *pad, uint8_t nsw_mode);
 int usbpad_getReportSize(void);
 unsigned char *usbpad_getReportBuffer(struct usbpad *pad);
 

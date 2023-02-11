@@ -71,16 +71,22 @@ static void hexdump(const unsigned char *ptr, int len)
 #endif
 
 static void buildIdleReport(unsigned char dstbuf[USBPAD_REPORT_SIZE]);
+static uint8_t s_nsw_mode;
 
-void usbpad_init(struct usbpad *pad)
+void usbpad_init(struct usbpad *pad, uint8_t nsw_mode)
 {
 	memset(pad, 0, sizeof(struct usbpad));
 	buildIdleReport(pad->gamepad_report0);
+	s_nsw_mode = nsw_mode;
 }
 
 int usbpad_getReportSize(void)
 {
-	return USBPAD_REPORT_SIZE;
+	if(s_nsw_mode){
+		return 8;
+	}else{
+		return USBPAD_REPORT_SIZE;
+	}
 }
 
 static int16_t minmax(int16_t input, int16_t min, int16_t max)
@@ -103,17 +109,19 @@ static void buildIdleReport(unsigned char dstbuf[USBPAD_REPORT_SIZE])
 {
 	int i;
 
-	dstbuf[0] = REPORT_ID;
+	if(!s_nsw_mode){
+		dstbuf[0] = REPORT_ID;
 
-	/* Inactive and centered axis */
-	for (i=0; i<6; i++) {
-		dstbuf[1+i*2] = 0x80;
-		dstbuf[2+i*2] = 0x3e;
+		/* Inactive and centered axis */
+		for (i=0; i<6; i++) {
+			dstbuf[1+i*2] = 0x80;
+			dstbuf[2+i*2] = 0x3e;
+		}
+
+		/* Inactive buttons */
+		dstbuf[13] = 0;
+		dstbuf[14] = 0;
 	}
-
-	/* Inactive buttons */
-	dstbuf[13] = 0;
-	dstbuf[14] = 0;
 }
 
 int usbpad_getReportSizeKB(void)
@@ -277,6 +285,56 @@ static void buildReportFromN64(const n64_pad_data *n64_data, unsigned char dstbu
 	btnsToReport(usb_buttons, dstbuf+13);
 }
 
+extern void led_test();
+static void buildReportFromN64_NSW(const n64_pad_data *n64_data, unsigned char dstbuf[USBPAD_REPORT_SIZE])
+{
+	int16_t xval, yval;
+	uint16_t usb_buttons, n64_buttons = n64_data->buttons;
+
+	/* Force official range */
+	xval = minmax(n64_data->x, -80, 80);
+	yval = minmax(n64_data->y, -80, 80);
+
+	if (g_eeprom_data.cfg.flags & FLAG_SWAP_STICK_AND_DPAD) {
+
+		// Generate new D-Pad button status based on stick
+		n64_buttons &= ~(N64_BTN_DPAD_UP|N64_BTN_DPAD_DOWN|N64_BTN_DPAD_LEFT|N64_BTN_DPAD_RIGHT);
+		if (xval <= -STICK_TO_BTN_THRESHOLD) { n64_buttons |= N64_BTN_DPAD_LEFT; }
+		if (xval >= STICK_TO_BTN_THRESHOLD) { n64_buttons |= N64_BTN_DPAD_RIGHT; }
+		if (yval <= -STICK_TO_BTN_THRESHOLD) { n64_buttons |= N64_BTN_DPAD_DOWN; }
+		if (yval >= STICK_TO_BTN_THRESHOLD) { n64_buttons |= N64_BTN_DPAD_UP; }
+
+		// Generate new stick values based on button (use n64_data here)
+		xval = 0; yval = 0;
+		if (n64_data->buttons & N64_BTN_DPAD_UP) { yval = 80; }
+		if (n64_data->buttons & N64_BTN_DPAD_DOWN) { yval = -80; }
+		if (n64_data->buttons & N64_BTN_DPAD_LEFT) { xval = -80; }
+		if (n64_data->buttons & N64_BTN_DPAD_RIGHT) { xval = 80; }
+	}
+
+	// /* Scale -80 ... +80 to -127 ... +127 */
+	xval += (xval/2);
+	yval += (yval/2);
+	yval = -yval;
+
+	/* Unsign for HID report */
+	xval += 0x80;
+	yval += 0x80;
+
+	dstbuf[3] = ((uint8_t)xval);
+	dstbuf[4] = ((uint8_t)yval);
+
+	usb_buttons = mappings_do(MAPPING_N64_DEFAULT, n64_buttons);
+	btnsToReport(usb_buttons, dstbuf);
+	
+	dstbuf[2] = 8; // hat
+	dstbuf[5] = 0x80; // stick 2 x
+	dstbuf[6] = 0x80; // stick 2 y
+	dstbuf[7] = 0x00; // dummy
+	
+
+}
+
 void usbpad_update(struct usbpad *pad, const gamepad_data *pad_data)
 {
 	/* Always start with an idle report. Specific report builders can just
@@ -288,7 +346,10 @@ void usbpad_update(struct usbpad *pad, const gamepad_data *pad_data)
 		switch (pad_data->pad_type)
 		{
 			case PAD_TYPE_N64:
-				buildReportFromN64(&pad_data->n64, pad->gamepad_report0);
+				if(s_nsw_mode)
+					buildReportFromN64_NSW(&pad_data->n64, pad->gamepad_report0);
+				else
+					buildReportFromN64(&pad_data->n64, pad->gamepad_report0);
 				break;
 
 			case PAD_TYPE_GAMECUBE:

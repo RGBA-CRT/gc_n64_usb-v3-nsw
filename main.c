@@ -430,6 +430,54 @@ static const struct cfg0_2p cfg0_2p_keyboard PROGMEM = {
 };
 
 
+struct cfg0_nsw {
+	struct usb_configuration_descriptor configdesc;
+	struct usb_interface_descriptor interface;
+	struct usb_hid_descriptor hid;
+	struct usb_endpoint_descriptor ep1_in;
+};
+
+static const struct cfg0_nsw cfg0_nsw PROGMEM = {
+	.configdesc = {
+		.bLength = sizeof(struct usb_configuration_descriptor),
+		.bDescriptorType = CONFIGURATION_DESCRIPTOR,
+		.wTotalLength = sizeof(cfg0_nsw), // includes all descriptors returned together
+		.bNumInterfaces = 1, // one interface per player
+		.bConfigurationValue = 1,
+		.bmAttributes = CFG_DESC_ATTR_RESERVED, // set Self-powred and remote-wakeup here if needed.
+		.bMaxPower = 96, // for 50mA
+	},
+
+	// Main interface, HID (player 1)
+	.interface = {
+		.bLength = sizeof(struct usb_interface_descriptor),
+		.bDescriptorType = INTERFACE_DESCRIPTOR,
+		.bInterfaceNumber = 0,
+		.bAlternateSetting = 0,
+		.bNumEndpoints = 1,
+		.bInterfaceClass = USB_DEVICE_CLASS_HID,
+		.bInterfaceSubClass = HID_SUBCLASS_NONE,
+		.bInterfaceProtocol = HID_PROTOCOL_NONE,
+		.iInterface=2,
+	},
+	.hid = {
+		.bLength = sizeof(struct usb_hid_descriptor),
+		.bDescriptorType = HID_DESCRIPTOR,
+		.bcdHid = 0x0111,
+		.bCountryCode = HID_COUNTRY_NOT_SUPPORTED,
+		.bNumDescriptors = 1, // Only a report descriptor
+		.bClassDescriptorType = REPORT_DESCRIPTOR,
+		.wClassDescriptorLength = sizeof(gcn64_usbHidReportDescriptorNSW),
+	},
+	.ep1_in = {
+		.bLength = sizeof(struct usb_endpoint_descriptor),
+		.bDescriptorType = ENDPOINT_DESCRIPTOR,
+		.bEndpointAddress = USB_RQT_DEVICE_TO_HOST | 1, // 0x81
+		.bmAttributes = TRANSFER_TYPE_INT,
+		.wMaxPacketsize = 64,
+		.bInterval = LS_FS_INTERVAL_MS(1),
+	}
+};
 
 struct usb_device_descriptor device_descriptor = {
 	.bLength = sizeof(struct usb_device_descriptor),
@@ -523,14 +571,14 @@ void hwinit(void)
 	 * 7: HWB		Input (external pull-up)
 	 * 6: NC		Output low
 	 * 5: NC		Output low
-	 * 4: NC		Output low
+	 * 4: NSW_MODE  Input(NSW_MODE switch)
 	 * 3: IO3_MCU	Input
 	 * 2: IO2_MCU	Input
 	 * 1: IO1_MCU	Input
 	 * 0: IO0_MCU	Input
 	 */
 	PORTD = 0x00;
-	DDRD = 0x70;
+	DDRD = 0x71;
 
 	// System clock. External crystal is 16 Mhz and we want
 	// to run at max. speed.
@@ -538,6 +586,24 @@ void hwinit(void)
 	CLKPR = 0x0; // Division factor of 1
 	PRR0 = 0;
 	PRR1 = 0;
+}
+
+unsigned char g_t;
+unsigned char g_t2;
+
+void led_test(){
+	g_t++;
+	if(g_t % 200==0){
+		if(g_t2 & 1){
+			PORTD |=0x20;
+		}else{
+			PORTD &= ~0x20;
+		}
+		g_t2++;
+	}
+}
+uint8_t is_nsw_mode(){
+	return (PIND & 0x10) ? 1 : 0;;
 }
 
 
@@ -663,6 +729,7 @@ int main(void)
 	uint8_t state = STATE_WAIT_POLLTIME;
 	uint8_t channel;
 	uint8_t i;
+	uint8_t nsw_mode;
 
 	hwinit();
 	usart1_init();
@@ -670,6 +737,8 @@ int main(void)
 	intervaltimer_init();
 	intervaltimer2_init();
 	stkchk_init();
+
+	nsw_mode = is_nsw_mode();
 
 	switch (g_eeprom_data.cfg.mode)
 	{
@@ -722,10 +791,23 @@ int main(void)
 		memcpy(usb_params.hid_params + 2, usb_params.hid_params + 1, sizeof(struct usb_hid_parameters));
 		// Add a second player interface between them
 		memcpy(usb_params.hid_params + 1, usb_params.hid_params + 0, sizeof(struct usb_hid_parameters));
+	}	
+
+	if(nsw_mode){
+		device_descriptor.idVendor = 0x0f0d;
+		device_descriptor.idProduct = 0x0092;
+		device_descriptor.bcdDevice = 0x0001;
+		device_descriptor.bcdUSB = 0x200;
+		device_descriptor.iSerialNumber = 0;
+		usb_params.configdesc = (PGM_VOID_P)&cfg0_nsw;
+		usb_params.configdesc_ttllen = sizeof(cfg0_nsw);
+		usb_params.n_hid_interfaces = 1;
+		usb_params.hid_params[0].reportdesc = gcn64_usbHidReportDescriptorNSW;
+		usb_params.hid_params[0].reportdesc_len = sizeof(gcn64_usbHidReportDescriptorNSW);
 	}
 
 	for (i=0; i<num_players; i++) {
-		usbpad_init(&usbpads[i]);
+		usbpad_init(&usbpads[i], nsw_mode);
 		usb_params.hid_params[i].ctx = &usbpads[i];
 	}
 
@@ -764,6 +846,7 @@ int main(void)
 				break;
 
 			case STATE_POLL_PAD:
+					led_test();
 				for (channel=0; channel<num_players; channel++)
 				{
 					/* Try to auto-detect controller if none*/
@@ -790,7 +873,7 @@ int main(void)
 							error_count[channel]=0;
 						}
 
-						if (pads[channel]->changed(channel))
+						if (pads[channel]->changed(channel) || nsw_mode)
 						{
 							pads[channel]->getReport(channel, &pad_data);
 							usbpad_update(&usbpads[channel], &pad_data);
@@ -909,7 +992,7 @@ int keyboard_main(void)
 	}
 
 	for (i=0; i<num_players; i++) {
-		usbpad_init(&usbpads[i]);
+		usbpad_init(&usbpads[i], 0);
 		usb_params.hid_params[i].ctx = &usbpads[i];
 	}
 
