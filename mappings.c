@@ -69,6 +69,57 @@ const static struct mapping map_n64_default[] PROGMEM = {
 	{	} /* terminator */
 };
 
+const static struct mapping map_n64_nsw[] PROGMEM = {
+	{ N64_BTN_A,			NSW_BTN_A },
+	{ N64_BTN_B,			NSW_BTN_B },
+	{ N64_BTN_Z,			NSW_BTN_ZL },
+	{ N64_BTN_START,		NSW_BTN_PLUS },
+	{ N64_BTN_L,			NSW_BTN_MINUS },
+	{ N64_BTN_R,			NSW_BTN_ZR },
+// 	{ N64_BTN_C_UP,			NSW_BTN_L }, // SPECIAL KEY
+	{ N64_BTN_C_DOWN,		NSW_BTN_Y },
+	{ N64_BTN_C_LEFT,		NSW_BTN_X },
+// 	{ N64_BTN_C_RIGHT,		NSW_BTN_RCLICK }, // SPECIAL KEY
+
+	{	} /* terminator */
+};
+const static struct mapping map_n64_nsw_special[] PROGMEM = {
+	{ N64_BTN_A,			NSW_BTN_A },
+	{ N64_BTN_B,			NSW_BTN_B },
+	{ N64_BTN_Z,			NSW_BTN_L },
+	{ N64_BTN_START,		NSW_BTN_HOME },
+	{ N64_BTN_L,			NSW_BTN_CAPTURE },
+	{ N64_BTN_R,			NSW_BTN_R },
+// 	{ N64_BTN_C_UP,			NSW_BTN_L }, // SPECIAL KEY
+	{ N64_BTN_C_DOWN,		NSW_BTN_RCLICK },
+	{ N64_BTN_C_LEFT,		NSW_BTN_LCLICK },
+// 	{ N64_BTN_C_RIGHT,		NSW_BTN_LCLICK }, // SPECIAL KEY
+
+	{	} /* terminator */
+};
+const static struct mapping map_gc_nsw[] PROGMEM = {
+	{ GC_BTN_A,		NSW_BTN_A },
+	{ GC_BTN_B,		NSW_BTN_B },
+	{ GC_BTN_Y,		NSW_BTN_Y },
+	{ GC_BTN_X,		NSW_BTN_X },
+// 	{ GC_BTN_Z,		NSW_BTN_MINUS }, // SPECIAL KEY
+	{ GC_BTN_START,	NSW_BTN_PLUS },
+	{ GC_BTN_L,		NSW_BTN_L },
+	{ GC_BTN_R,		NSW_BTN_R },
+	{	} /* terminator */
+};
+const static struct mapping map_gc_nsw_l2[] PROGMEM = {
+	{ GC_BTN_A,		NSW_BTN_A },
+	{ GC_BTN_B,		NSW_BTN_B },
+	{ GC_BTN_Y,		NSW_BTN_Y },
+	{ GC_BTN_X,		NSW_BTN_X },
+// 	{ GC_BTN_Z,		NSW_BTN_MINUS }, // SPECIAL KEY
+	{ GC_BTN_START,	NSW_BTN_HOME},
+	{ GC_BTN_L,		NSW_BTN_RCLICK },
+	{ GC_BTN_R,		NSW_BTN_LCLICK },
+	{	} /* terminator */
+};
+
 static uint16_t domap(const struct mapping *map, uint16_t input)
 {
 	const struct mapping *cur = map;
@@ -98,6 +149,14 @@ uint16_t mappings_do(uint8_t mapping_id, uint16_t input)
 			return domap(map_gc_default, input);
 		case MAPPING_N64_DEFAULT:
 			return domap(map_n64_default, input);
+		case MAPPING_N64_NSW:
+			return domap(map_n64_nsw, input);
+		case MAPPING_N64_NSW_L2:
+			return domap(map_n64_nsw_special, input);
+		case MAPPING_GAMECUBE_NSW:
+			return domap(map_gc_nsw, input);
+		case MAPPING_GAMECUBE_NSW_L2:
+			return domap(map_gc_nsw_l2, input);
 	}
 
 	return 0;

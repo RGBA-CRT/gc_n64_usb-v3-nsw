@@ -101,6 +101,21 @@ extern gamepad_data last_built_report[GAMEPAD_MAX_CHANNELS];
 /* What was most recently sent to the host */
 extern gamepad_data last_sent_report[GAMEPAD_MAX_CHANNELS];
 
+#define NSW_BTN_Y USB_BTN(0)
+#define NSW_BTN_B USB_BTN(1)
+#define NSW_BTN_A USB_BTN(2)
+#define NSW_BTN_X USB_BTN(3)
+#define NSW_BTN_L USB_BTN(4)
+#define NSW_BTN_R USB_BTN(5)
+#define NSW_BTN_ZL USB_BTN(6)
+#define NSW_BTN_ZR USB_BTN(7)
+#define NSW_BTN_MINUS USB_BTN(8)
+#define NSW_BTN_PLUS USB_BTN(9)
+#define NSW_BTN_LCLICK USB_BTN(10)
+#define NSW_BTN_RCLICK USB_BTN(11)
+#define NSW_BTN_HOME USB_BTN(12)
+#define NSW_BTN_CAPTURE USB_BTN(13)
+
 #endif // _gamepads_h__
 
 

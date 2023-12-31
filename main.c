@@ -610,11 +610,9 @@ uint8_t is_nsw_mode(){
 uint8_t num_players = 1;
 unsigned char current_pad_type[NUM_CHANNELS] = { };
 
-Gamepad *detectPad(unsigned char chn)
+Gamepad *getGamepadByPadType(unsigned char pad_type)
 {
-	current_pad_type[chn] = gcn64_detectController(chn);
-
-	switch (current_pad_type[chn])
+	switch (pad_type)
 	{
 		case CONTROLLER_IS_ABSENT:
 		case CONTROLLER_IS_UNKNOWN:
@@ -632,6 +630,31 @@ Gamepad *detectPad(unsigned char chn)
 	}
 
 	return NULL;
+}
+
+Gamepad *detectPad(unsigned char chn)
+{
+	current_pad_type[chn] = gcn64_detectController(chn);
+	return getGamepadByPadType(current_pad_type[chn]);
+}
+
+Gamepad *detectPad_NSW(unsigned char chn, uint8_t* hw_channel)
+{
+	if(chn != 0){
+		return NULL;
+	}
+
+	Gamepad *ret = NULL;
+	for(uint8_t i=0;i<MAX_PLAYERS;i++){
+		unsigned char pad_type = gcn64_detectController(i);
+		ret = getGamepadByPadType(pad_type);
+		if(ret){
+			printf_P(PSTR("pad idx=%d\r\n"), i);
+			*hw_channel = i;
+			break;
+		}
+	}
+	return ret;
 }
 
 /* Called after eeprom content is loaded. */
@@ -727,7 +750,7 @@ int main(void)
 	gamepad_data pad_data;
 	uint8_t gamepad_vibrate = 0;
 	uint8_t state = STATE_WAIT_POLLTIME;
-	uint8_t channel;
+	uint8_t channel, hw_channel;
 	uint8_t i;
 	uint8_t nsw_mode;
 
@@ -782,17 +805,6 @@ int main(void)
 			break;
 	}
 
-	// 2-players common
-	if (num_players == 2) {
-		usb_params.configdesc = (PGM_VOID_P)&cfg0_2p;
-		usb_params.configdesc_ttllen = sizeof(cfg0_2p);
-		usb_params.n_hid_interfaces = 3;
-		// Move the management interface is the last position
-		memcpy(usb_params.hid_params + 2, usb_params.hid_params + 1, sizeof(struct usb_hid_parameters));
-		// Add a second player interface between them
-		memcpy(usb_params.hid_params + 1, usb_params.hid_params + 0, sizeof(struct usb_hid_parameters));
-	}	
-
 	if(nsw_mode){
 		device_descriptor.idVendor = 0x0f0d;
 		device_descriptor.idProduct = 0x0092;
@@ -804,7 +816,20 @@ int main(void)
 		usb_params.n_hid_interfaces = 1;
 		usb_params.hid_params[0].reportdesc = gcn64_usbHidReportDescriptorNSW;
 		usb_params.hid_params[0].reportdesc_len = sizeof(gcn64_usbHidReportDescriptorNSW);
+		
+		num_players = 1;
 	}
+
+	// 2-players common
+	if (num_players == 2) {
+		usb_params.configdesc = (PGM_VOID_P)&cfg0_2p;
+		usb_params.configdesc_ttllen = sizeof(cfg0_2p);
+		usb_params.n_hid_interfaces = 3;
+		// Move the management interface is the last position
+		memcpy(usb_params.hid_params + 2, usb_params.hid_params + 1, sizeof(struct usb_hid_parameters));
+		// Add a second player interface between them
+		memcpy(usb_params.hid_params + 1, usb_params.hid_params + 0, sizeof(struct usb_hid_parameters));
+	}	
 
 	for (i=0; i<num_players; i++) {
 		usbpad_init(&usbpads[i], nsw_mode);
@@ -851,18 +876,23 @@ int main(void)
 				{
 					/* Try to auto-detect controller if none*/
 					if (!pads[channel]) {
-						pads[channel] = detectPad(channel);
+						if(!nsw_mode){
+							pads[channel] = detectPad(channel);
+							hw_channel = channel;
+						} else {
+							pads[channel] = detectPad_NSW(channel, &hw_channel);
+						}
 						if (pads[channel] && (pads[channel]->hotplug)) {
 							// For gamecube, this make sure the next
 							// analog values we read become the center
 							// reference.
-							pads[channel]->hotplug(channel);
+							pads[channel]->hotplug(hw_channel);
 						}
 					}
 
 					/* Read from the pad by calling update */
 					if (pads[channel]) {
-						if (pads[channel]->update(channel)) {
+						if (pads[channel]->update(hw_channel)) {
 							error_count[channel]++;
 							if (error_count[channel] > MAX_READ_ERRORS) {
 								pads[channel] = NULL;
@@ -873,9 +903,9 @@ int main(void)
 							error_count[channel]=0;
 						}
 
-						if (pads[channel]->changed(channel) || nsw_mode)
+						if (pads[channel]->changed(hw_channel) || nsw_mode)
 						{
-							pads[channel]->getReport(channel, &pad_data);
+							pads[channel]->getReport(hw_channel, &pad_data);
 							usbpad_update(&usbpads[channel], &pad_data);
 							state = STATE_WAIT_INTERRUPT_READY;
 							continue;

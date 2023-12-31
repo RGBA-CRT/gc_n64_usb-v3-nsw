@@ -287,17 +287,17 @@ static void handleSetupPacket(struct usb_request *rq)
 					case USB_RQT_CLASS:
 						switch(rq->bRequest)
 						{
-//							case HID_CLSRQ_SET_IDLE:
-//								while (!(UEINTX & (1<<TXINI)));
-//								UEINTX &= ~(1<<TXINI);
-//								break;
+							case HID_CLSRQ_SET_IDLE:
+								while (!(UEINTX & (1<<TXINI)));
+								UEINTX &= ~(1<<TXINI);
+								break;
 							case HID_CLSRQ_SET_REPORT:
 								while (!(UEINTX & (1<<TXINI)));
 								UEINTX &= ~(1<<TXINI);
 								initControlWrite(rq);
 								break;
 							default:
-								printf_P(PSTR("Unhandled class bRequest 0x%02x\n"), rq->bRequest);
+								printf_P(PSTR("Unhandled class bRequest 0x%02x\r\n"), rq->bRequest);
 								unhandled = 1;
 						}
 						break;
@@ -308,8 +308,41 @@ static void handleSetupPacket(struct usb_request *rq)
 				break;
 
 			case USB_RQT_RECIPIENT_ENDPOINT:
+				switch(rq->bRequest){
+					case USB_RQ_SET_FEATURE:
+					case USB_RQ_CLEAR_FEATURE:{
+						// printf_P(PSTR("%s feature: sel=%d, idx=%d\r\n"), 
+						// 	(rq->bRequest == USB_RQ_SET_FEATURE ? "set" : 
+						// 		(rq->bRequest == USB_RQ_CLEAR_FEATURE ? "clear" : "???")),
+						// 	rq->wValue, rq->wIndex);
+						const uint8_t FEATURE_SELECTOR_ENDPOINT_HALT = 0x00;
+						if(rq->wValue == FEATURE_SELECTOR_ENDPOINT_HALT){
+							// printf_P(PSTR(" ENDPOINT_HALT idx=%2x\r\n"), rq->wIndex);
+							
+							if((rq->wIndex >= 0x81) && (rq->wIndex <= 0x83)){
+								while (!(UEINTX & (1<<TXINI)));
+								UEINTX &= ~(1<<TXINI);
+								// interrupt_enable[(rq->wIndex  -1)& 0x3] = 1;
+								// UECONX = (1<<STALLRQ) | (1<<EPEN);
+								// printf_P(PSTR(" ENDPOINT_HALT idx=%2x\r\n"), rq->wIndex);
+							}else{
+								unhandled = 1;
+							}							
+						}else{
+							unhandled = 1;
+						}
+						break;
+					}
+					default:
+						printf_P(PSTR("unhandled endpoint request. rq=%d\r\n"), rq->bRequest);
+						
+						unhandled = 1;
+						break;						
+				}
+				break;
 			case USB_RQT_RECIPIENT_OTHER:
 			default:
+				unhandled = 1;
 				break;
 		}
 	}
@@ -380,7 +413,8 @@ static void handleSetupPacket(struct usb_request *rq)
 									else if (id == 0) // Table of supported languages (string id 0)
 									{
 										unsigned char languages[4] = {
-											4, STRING_DESCRIPTOR, 0x09, 0x10 // English (Canadian)
+											// 4, STRING_DESCRIPTOR, 0x09, 0x10 // English (Canadian)
+											4, STRING_DESCRIPTOR, 0x09, 0x04 // English (Canadian)
 										};
 										buf2EP(0, languages, 4, rq->wLength, 0);
 									}
