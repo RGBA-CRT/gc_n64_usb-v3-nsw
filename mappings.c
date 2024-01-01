@@ -104,8 +104,8 @@ const static struct mapping map_gc_nsw[] PROGMEM = {
 	{ GC_BTN_X,		NSW_BTN_X },
 // 	{ GC_BTN_Z,		NSW_BTN_MINUS }, // SPECIAL KEY
 	{ GC_BTN_START,	NSW_BTN_PLUS },
-	{ GC_BTN_L,		NSW_BTN_L },
-	{ GC_BTN_R,		NSW_BTN_R },
+	{ GC_BTN_L,		NSW_BTN_ZL },
+	{ GC_BTN_R,		NSW_BTN_ZR },
 	{	} /* terminator */
 };
 const static struct mapping map_gc_nsw_l2[] PROGMEM = {

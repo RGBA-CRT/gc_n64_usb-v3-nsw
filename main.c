@@ -747,10 +747,11 @@ static struct hiddata_ops hiddata_ops = {
 int main(void)
 {
 	Gamepad *pads[MAX_PLAYERS] = { };
+	uint8_t hw_channel[MAX_PLAYERS] = { };
 	gamepad_data pad_data;
 	uint8_t gamepad_vibrate = 0;
 	uint8_t state = STATE_WAIT_POLLTIME;
-	uint8_t channel, hw_channel;
+	uint8_t channel;
 	uint8_t i;
 	uint8_t nsw_mode;
 
@@ -871,41 +872,42 @@ int main(void)
 				break;
 
 			case STATE_POLL_PAD:
-					led_test();
+				led_test();
 				for (channel=0; channel<num_players; channel++)
 				{
 					/* Try to auto-detect controller if none*/
 					if (!pads[channel]) {
 						if(!nsw_mode){
 							pads[channel] = detectPad(channel);
-							hw_channel = channel;
+							hw_channel[channel] = channel;
 						} else {
-							pads[channel] = detectPad_NSW(channel, &hw_channel);
+							pads[channel] = detectPad_NSW(channel, &hw_channel[channel]);
 						}
 						if (pads[channel] && (pads[channel]->hotplug)) {
 							// For gamecube, this make sure the next
 							// analog values we read become the center
 							// reference.
-							pads[channel]->hotplug(hw_channel);
+							pads[channel]->hotplug(hw_channel[channel]);
 						}
 					}
 
 					/* Read from the pad by calling update */
 					if (pads[channel]) {
-						if (pads[channel]->update(hw_channel)) {
+						if (pads[channel]->update(hw_channel[channel])) {
 							error_count[channel]++;
 							if (error_count[channel] > MAX_READ_ERRORS) {
 								pads[channel] = NULL;
 								error_count[channel] = 0;
+								printf_P(PSTR("pad %d(%d) update error.\r\n"), channel, hw_channel[channel]);
 								continue;
 							}
 						} else {
 							error_count[channel]=0;
 						}
 
-						if (pads[channel]->changed(hw_channel) || nsw_mode)
+						if (pads[channel]->changed(hw_channel[channel]) || nsw_mode)
 						{
-							pads[channel]->getReport(hw_channel, &pad_data);
+							pads[channel]->getReport(hw_channel[channel], &pad_data);
 							usbpad_update(&usbpads[channel], &pad_data);
 							state = STATE_WAIT_INTERRUPT_READY;
 							continue;

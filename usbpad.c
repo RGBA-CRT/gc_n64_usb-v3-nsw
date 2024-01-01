@@ -275,9 +275,27 @@ static void buildReportFromGC(const gc_pad_data *gc_data, unsigned char dstbuf[U
 	btnsToReport(buttons, dstbuf+13);
 }
 
+#define GC_ANALOG_SAFE_AREA_THRESHOLD 8
+static uint8_t buildAnalogValueGc2NswHid(int8_t analog){
+	int16_t aval = analog;
+	
+	// 0~100 * 1.5 = 150
+	aval+=aval>>1;
+
+	// safe area
+	if(abs(aval) < GC_ANALOG_SAFE_AREA_THRESHOLD) aval = 0;	
+
+	// signed to unsigned
+	aval += 128;
+
+	// clamp uint8_t
+	aval = minmax(aval, 0, 255);
+
+	return (uint8_t)aval;
+}
+
 static void buildReportFromGC_NSW(const gc_pad_data *gc_data, unsigned char dstbuf[USBPAD_REPORT_SIZE])
 {
-	int16_t xval,yval,cxval,cyval,ltrig,rtrig;
 	uint16_t buttons;
 	uint16_t gcbuttons = gc_data->buttons;
 	
@@ -287,63 +305,33 @@ static void buildReportFromGC_NSW(const gc_pad_data *gc_data, unsigned char dstb
 		buttons = mappings_do(MAPPING_GAMECUBE_NSW, gcbuttons);
 	}
 
-	uint8_t dpad_bits=((gcbuttons>>8) & 0xC)
-					  | ((gcbuttons & GC_BTN_DPAD_LEFT) ? 0x02 : 0)
-					  | ((gcbuttons & GC_BTN_DPAD_RIGHT) ? 0x01 : 0);
-
-	/* Force official range */
-	xval = minmax(gc_data->x, -100, 100);
-	yval = -minmax(gc_data->y, -100, 100);
-	cxval = minmax(gc_data->cx, -100, 100);
-	cyval = -minmax(gc_data->cy, -100, 100);
-	// xval = gc_data->x;
-	// yval = -gc_data->y;
-	// cxval = gc_data->cx;
-	// cyval = -gc_data->cy;
 	if(!(gcbuttons & GC_BTN_Z)){
-		ltrig = gc_data->lt;
-		rtrig = gc_data->rt;
-		if ((ltrig > 64) && !(buttons & NSW_BTN_L)){
-			buttons |= NSW_BTN_ZL;
-			;
+		int8_t ltrig = gc_data->lt;
+		int8_t rtrig = gc_data->rt;
+		if ((ltrig > 64) && (ltrig < 190)){
+			buttons |= NSW_BTN_L;
 		}
-		if ((rtrig > 64) && !(buttons & NSW_BTN_R)){
-			buttons |= NSW_BTN_ZR;
-			buttons &= ~NSW_BTN_R;
+		if ((rtrig > 64) && (rtrig < 190)){
+			buttons |= NSW_BTN_R;
 		}
 	}
 
-	xval += xval>>1;
-	yval += yval>>1;
-	cxval += cxval>>1;
-	cyval += cyval>>1;
-
-	/* Unsign for HID report */
-	xval += 127;
-	yval += 127;
-	cxval += 127;
-	cyval += 127;
-	xval = minmax(xval, 0, 250);
-	yval = minmax(yval, 0, 250);
-	cxval = minmax(cxval, 0, 250);
-	cyval = minmax(cyval, 0, 250);
-	// ltrig += 100;
-	// rtrig += 100;
-	
 	btnsToReport(buttons, dstbuf);
+	
+	uint8_t dpad_bits=((gcbuttons>>8) & 0xC)
+					  | ((gcbuttons & GC_BTN_DPAD_LEFT) ? 0x02 : 0)
+					  | ((gcbuttons & GC_BTN_DPAD_RIGHT) ? 0x01 : 0);
 	dstbuf[2] = N64DpadToNswHat(dpad_bits); // hat
-	dstbuf[3] = ((uint8_t)xval);
-	dstbuf[4] = ((uint8_t)yval);
-	dstbuf[5] = ((uint8_t)cxval);
-	dstbuf[6] = ((uint8_t)cyval);
+
+	dstbuf[3] = buildAnalogValueGc2NswHid(gc_data->x);
+	dstbuf[4] = buildAnalogValueGc2NswHid(-gc_data->y);
+	dstbuf[5] = buildAnalogValueGc2NswHid(gc_data->cx);
+	dstbuf[6] = buildAnalogValueGc2NswHid(-gc_data->cy);
 	dstbuf[7] = 0x00; // dummy
 
-	// printf("%x %x %x %x | %x %x %x %x\r\n",
-	// 	gc_data->x, gc_data->y, gc_data->cx, gc_data->cy,
-	// 	dstbuf[3], dstbuf[4], dstbuf[5],dstbuf[6]);
-	// printf_P("\r\nNSW GC\r\n");
-	// hexdump2(dstbuf, 8);
-	// hexdump2(gc_data, sizeof(gc_pad_data));
+	printf("%4d %4d %4d %4d %4d %4d| %4d %4d %4d %4d\r\n",
+		gc_data->x, gc_data->y, gc_data->cx, gc_data->cy, gc_data->lt, gc_data->rt,
+		dstbuf[3], dstbuf[4], dstbuf[5],dstbuf[6]);
 }
 
 
